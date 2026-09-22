@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Rastreador de Frentes de Trabalho</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Frentes de Trabalho">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0e1f2f">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230e1f2f'/%3E%3Cpath d='M50 20 L75 40 L75 80 L25 80 L25 40 Z' fill='none' stroke='%23e0692b' stroke-width='5'/%3E%3Ccircle cx='50' cy='50' r='8' fill='%23e0692b'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+  :root{
+    --navy: #0e1f2f;
+    --navy-2: #16324a;
+    --steel: #4a6178;
+    --concrete: #eceae4;
+    --paper: #f7f5ef;
+    --caution: #e0692b;
+    --caution-dark: #b8501c;
+    --ok: #3f7d5c;
+    --late: #b23a3a;
+    --line: #d9d4c7;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;font-family:"Segoe UI",Helvetica,Arial,sans-serif;color:var(--navy);background:var(--concrete);}
+  #app{position:relative;height:100vh;width:100vw;overflow:hidden;}
+  #map{position:absolute;inset:0;}
+
+  header{
+    position:absolute;top:0;left:0;right:0;z-index:500;
+    background:var(--navy);color:var(--paper);
+    padding:14px 18px;display:flex;align-items:center;justify-content:space-between;
+    box-shadow:0 2px 10px rgba(0,0,0,.25);
+  }
+  header h1{font-size:17px;margin:0;font-weight:600;letter-spacing:.2px;}
+  header .sub{font-size:12px;color:#b7c4cf;margin-top:2px;}
+  .header-actions{display:flex;gap:8px;align-items:center;}
+  #listBtn{
+    background:var(--navy-2);color:#fff;border:none;width:40px;height:40px;
+    border-radius:3px;font-size:18px;cursor:pointer;line-height:1;
+  }
+  #listBtn:hover{background:var(--steel);}
+
+  #logoutBtn{
+    background:var(--navy-2);color:#fff;border:none;width:40px;height:40px;
+    border-radius:3px;font-size:16px;cursor:pointer;line-height:1;
+  }
+  #logoutBtn:hover{background:var(--late);}
+
+  .site-item{
+    border:1px solid var(--line);border-radius:4px;padding:12px;margin-bottom:8px;
+    background:#fff;cursor:pointer;transition:border-color .15s;
+  }
+  .site-item:hover{border-color:var(--steel);}
+  .site-item .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .site-item .top strong{font-size:14px;}
+  .site-item .meta{font-size:12px;color:var(--steel);}
+  .site-item .progress-bar{height:6px;margin-top:8px;}
+
+  #newBtn{
+    background:var(--caution);color:#fff;border:none;padding:10px 16px;
+    border-radius:3px;font-size:14px;font-weight:600;cursor:pointer;
+    transition:background .15s;
+  }
+  #newBtn:hover{background:var(--caution-dark);}
+  #newBtn.active{background:var(--late);}
+
+  #hint{
+    position:absolute;top:66px;left:50%;transform:translateX(-50%);
+    background:var(--caution);color:#fff;padding:8px 16px;border-radius:3px;
+    font-size:13px;z-index:500;display:none;box-shadow:0 2px 8px rgba(0,0,0,.3);
+  }
+
+  #searchBox{
+    position:absolute;top:66px;left:16px;z-index:500;width:300px;max-width:70vw;
+  }
+  #searchBox input{
+    width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:3px;
+    font-size:14px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);
+  }
+  #searchResults{
+    margin-top:4px;background:#fff;border:1px solid var(--line);border-radius:4px;
+    overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.15);display:none;
+  }
+  #searchResults div{
+    padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--line);
+  }
+  #searchResults div:last-child{border-bottom:none;}
+  #searchResults div:hover{background:var(--concrete);}
+
+  .popup-btn{
+    background:var(--caution);color:#fff;border:none;padding:6px 10px;border-radius:3px;
+    font-size:12px;cursor:pointer;margin-top:4px;
+  }
+
+  #legend{
+    position:absolute;bottom:16px;left:16px;z-index:500;
+    background:var(--paper);border:1px solid var(--line);border-radius:4px;
+    padding:10px 14px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.15);
+  }
+  #legend div{display:flex;align-items:center;gap:6px;margin:3px 0;cursor:pointer;user-select:none;}
+  #legend div.active-filter{font-weight:bold;text-decoration:underline;}
+  .dot{width:10px;height:10px;border-radius:50%;display:inline-block;}
+
+  #panel{
+    position:absolute;top:0;right:0;bottom:0;width:380px;max-width:92vw;
+    background:var(--paper);border-left:1px solid var(--line);
+    transform:translateX(100%);transition:transform .25s ease;
+    z-index:600;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,.2);
+  }
+  #panel.open{transform:translateX(0);}
+  .panel-head{
+    background:var(--navy-2);color:#fff;padding:16px 18px;position:sticky;top:0;z-index:2;
+    display:flex;justify-content:space-between;align-items:flex-start;
+  }
+  .panel-head h2{font-size:16px;margin:0 0 4px;}
+  .panel-head .ri{font-size:12px;color:#c4d3dd;}
+  #closePanel{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;padding:0 4px;}
+  .panel-body{padding:16px 18px;}
+
+  label{display:block;font-size:12px;color:var(--steel);margin:12px 0 4px;font-weight:600;}
+  input[type=text], input[type=date], textarea, input[type=number], input[type=time]{
+    width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:3px;
+    font-size:14px;font-family:inherit;background:#fff;
+  }
+  textarea{resize:vertical;min-height:50px;}
+  .row2{display:flex;gap:10px;}
+  .row2 > div{flex:1;}
+  .row3{display:flex;gap:6px;}
+  .row3 > div{flex:1;}
+
+  .chip-input{display:flex;gap:6px;}
+  .chip-input input{flex:1;}
+  .chip-input button{
+    background:var(--navy-2);color:#fff;border:none;border-radius:3px;padding:0 12px;cursor:pointer;
+  }
+  #teamChips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .chip{
+    background:#e3e8ea;border:1px solid var(--line);border-radius:14px;padding:4px 10px;font-size:12px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .chip button{background:none;border:none;color:var(--late);cursor:pointer;font-size:13px;padding:0;}
+
+  .status-badge{
+    display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.4px;color:#fff;
+  }
+
+  .progress-wrap{margin:14px 0 4px;}
+  .progress-bar{height:10px;background:#e2ded2;border-radius:6px;overflow:hidden;}
+  .progress-fill{height:100%;background:var(--caution);transition:width .3s;}
+  .progress-label{font-size:12px;color:var(--steel);margin-top:4px;}
+
+  .save-btn{
+    width:100%;background:var(--navy);color:#fff;border:none;padding:11px;
+    border-radius:3px;font-size:14px;font-weight:600;cursor:pointer;margin-top:16px;
+  }
+  .save-btn:hover{background:var(--navy-2);}
+  .save-btn.secondary{background:var(--caution);margin-top:8px;}
+  .save-btn.secondary:hover{background:var(--caution-dark);}
+  .save-btn.danger{background:#fff;color:var(--late);border:1px solid var(--late);margin-top:8px;}
+  .save-btn.danger:hover{background:var(--late);color:#fff;}
+
+  .paint-table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px;background:#fff;}
+  .paint-table th{background:var(--navy-2);color:#fff;padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.3px;}
+  .paint-table td{border:1px solid var(--line);padding:2px;}
+  .paint-table input{border:none;width:100%;padding:6px;font-size:13px;background:transparent;font-family:inherit;}
+  .paint-table input:focus{outline:1px solid var(--steel);background:var(--concrete);}
+  .paint-remove{background:none;border:none;color:var(--late);cursor:pointer;font-size:15px;padding:0 6px;}
+  .add-row-btn{background:var(--navy-2);color:#fff;border:none;padding:7px 14px;border-radius:3px;font-size:12px;cursor:pointer;margin-top:8px;}
+  .add-row-btn:hover{background:var(--steel);}
+
+  hr{border:none;border-top:1px solid var(--line);margin:18px 0;}
+
+  .entry{
+    border:1px solid var(--line);border-radius:4px;padding:10px 12px;margin-bottom:8px;background:#fff;
+  }
+  .entry .top{display:flex;justify-content:space-between;font-size:13px;font-weight:600;align-items:center;}
+  .entry-delete{
+    background:none;border:none;color:var(--late);cursor:pointer;font-size:13px;
+    margin-left:6px;padding:2px 5px;border-radius:3px;
+  }
+  .entry-delete:hover{background:#fbe4e4;}
+  .entry .obs{font-size:12px;color:var(--steel);margin-top:4px;}
+  .entry-photo{
+    width:100%;max-height:160px;object-fit:cover;border-radius:4px;margin-top:8px;cursor:pointer;
+  }
+  #lightbox{
+    position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1000;display:none;
+    align-items:center;justify-content:center;padding:20px;
+  }
+  #lightbox img{max-width:100%;max-height:100%;border-radius:4px;}
+
+  #loginScreen{
+    position:fixed;inset:0;background:var(--navy);z-index:900;
+    display:none;align-items:center;justify-content:center;padding:20px;
+  }
+  .login-box{
+    background:var(--paper);border-radius:6px;padding:28px 24px;width:100%;max-width:340px;
+    box-shadow:0 10px 30px rgba(0,0,0,.4);
+  }
+  .login-box h2{margin:0 0 4px;font-size:19px;color:var(--navy);}
+  .login-sub{margin:0 0 18px;font-size:13px;color:var(--steel);}
+  .login-error{color:var(--late);font-size:13px;min-height:18px;margin-top:8px;}
+  .login-credit{margin-top:18px;text-align:center;font-size:11px;color:var(--steel);}
+
+  #appCredit{
+    position:absolute;bottom:16px;right:16px;z-index:500;
+    background:rgba(14,31,47,.7);color:#c4d3dd;font-size:10px;
+    padding:4px 9px;border-radius:3px;pointer-events:none;
+  }
+  .empty{font-size:13px;color:var(--steel);font-style:italic;}
+
+  #loadingMsg{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    z-index:700;background:var(--navy);color:#fff;padding:10px 18px;border-radius:4px;font-size:13px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <header>
+    <div>
+      <h1>Frentes de Trabalho</h1>
+      <div class="sub">Toque num pino para ver detalhes · dados compartilhados com a equipe</div>
+    </div>
+    <div class="header-actions">
+      <button id="logoutBtn" title="Sair">⎋</button>
+      <button id="listBtn" title="Lista de locais">☰</button>
+      <button id="newBtn">+ Novo local</button>
+    </div>
+  </header>
+  <div id="hint">Clique em um ponto do mapa para cadastrar o local</div>
+  <div id="searchBox">
+    <input type="text" id="searchInput" placeholder="Buscar endereço ou local...">
+    <div id="searchResults"></div>
+  </div>
+  <div id="legend">
+    <div id="filter-andamento"><span class="dot" style="background:#e0692b"></span> Em andamento</div>
+    <div id="filter-concluido"><span class="dot" style="background:#3f7d5c"></span> Concluído</div>
+    <div id="filter-atrasado"><span class="dot" style="background:#b23a3a"></span> Atrasado</div>
+  </div>
+  <div id="appCredit">Desenvolvido por Rodrigo Oliveira Mendes da Costa</div>
+  <div id="loadingMsg">Carregando dados...</div>
+  <div id="lightbox" onclick="this.style.display='none'"><img id="lightboxImg" src=""></div>
+
+  <div id="loginScreen">
+    <form id="loginForm" class="login-box">
+      <h2>Frentes de Trabalho</h2>
+      <p class="login-sub">Acesso restrito à equipe</p>
+      <label>E-mail</label>
+      <input type="email" id="loginEmail" required placeholder="equipe@frentesdetrabalho.app">
+      <label>Senha</label>
+      <input type="password" id="loginPassword" required placeholder="Sua senha">
+      <div id="loginError" class="login-error"></div>
+      <button type="submit" id="loginSubmit" class="save-btn">Entrar</button>
+      <div class="login-credit">Desenvolvido por Rodrigo Oliveira Mendes da Costa</div>
+    </form>
+  </div>
+
+  <div id="panel">
+    <div class="panel-head">
+      <div>
+        <h2 id="panelTitle">Novo local</h2>
+        <div class="ri" id="panelRi"></div>
+      </div>
+      <button id="closePanel">✕</button>
+    </div>
+    <div class="panel-body" id="panelBody"></div>
+  </div>
+</div>
+
+<script>
+const FIREBASE_URL = "https://work-front-c98af-default-rtdb.firebaseio.com";
+const FIREBASE_API_KEY = "AIzaSyA2ik3ionBrgTwEXfXNcLAf4g7hKxbhjOk";
+let authToken = localStorage.getItem('authToken') || null;
+let refreshToken = localStorage.getItem('refreshToken') || null;
+let authUid = localStorage.getItem('authUid') || null;
+let userRole = 'editor'; 
+let sites = {};       
+let map, addMode = false, pendingLatLng = null;
+const markers = {};
+let activeStatusFilter = null;
+
+// ---- Renovação Automática do Auth Token ----
+async function refreshTokenIfNeeded() {
+  if (!refreshToken) return;
+  try {
+    const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=refresh_token&refresh_token=${refreshToken}`
+    });
+    const data = await res.json();
+    if (data.id_token) {
+      authToken = data.id_token;
+      refreshToken = data.refresh_token;
+      localStorage.setItem('authToken', authToken);
+      localStorage.setItem('refreshToken', refreshToken);
+    }
+  } catch(e) {
+    console.error("Erro ao renovar token de autenticação:", e);
+  }
+}
+
+// ---- Login ----
+async function doLogin(email, password){
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_API_KEY}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email, password, returnSecureToken: true})
+  });
+  const data = await res.json();
+  if(data.idToken){
+    authToken = data.idToken;
+    refreshToken = data.refreshToken;
+    authUid = data.localId;
+    localStorage.setItem('authToken', authToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    localStorage.setItem('authUid', authUid);
+    localStorage.setItem('authEmail', email);
+    return {ok: true};
+  }
+  return {ok: false, code: data.error?.message || 'ERRO_DESCONHECIDO'};
+}
+
+async function fetchUserRole(){
+  if(!authUid){ userRole = 'editor'; return; }
+  await refreshTokenIfNeeded();
+  try{
+    const res = await fetch(`${FIREBASE_URL}/Roles/${authUid}.json?auth=${authToken}`);
+    const rawText = await res.text();
+    let role = null;
+    try{ role = JSON.parse(rawText); }catch(e){}
+    userRole = (role === 'admin') ? 'admin' : 'editor';
+  }catch(e){
+    userRole = 'editor';
+  }
+}
+
+function showLoginScreen(errorMsg){
+  document.getElementById('loadingMsg').style.display = 'none';
+  const el = document.getElementById('loginScreen');
+  el.style.display = 'flex';
+  document.getElementById('loginError').textContent = errorMsg || '';
+  document.getElementById('loginEmail').value = localStorage.getItem('authEmail') || '';
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginSubmit');
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  try{
+    const result = await doLogin(email, password);
+    if(result.ok){
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('loadingMsg').style.display = 'block';
+      await fetchUserRole();
+      await loadAll();
+    } else {
+      document.getElementById('loginError').textContent = 'Não entrou. Código: ' + result.code;
+    }
+  }catch(err){
+    document.getElementById('loginError').textContent = 'Erro de conexão. Tente novamente.';
+  }
+  btn.disabled = false; btn.textContent = 'Entrar';
+});
+
+function uid(){ return 's' + Date.now() + Math.floor(Math.random()*1000); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+function compressImage(file, maxDim = 900, quality = 0.6){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Falha ao carregar imagem'));
+      img.onload = () => {
+        let { width, height } = img;
+        if(width > height){ if(width > maxDim){ height = Math.round(height * maxDim / width); width = maxDim; } }
+        else { if(height > maxDim){ width = Math.round(width * maxDim / height); height = maxDim; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+window.openLightbox = function(src){
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').style.display = 'flex';
+};
+
+function statusColor(site){
+  const s = computeStatus(site);
+  return s === 'concluido' ? '#3f7d5c' : (s === 'atrasado' ? '#b23a3a' : '#e0692b');
+}
+function statusLabel(s){
+  return s==='concluido' ? 'Concluído' : (s==='atrasado' ? 'Atrasado' : 'Em andamento');
+}
+function totalPct(site){
+  let sum = 0;
+  (site.entries||[]).forEach(e => sum += Number(e.pct)||0);
+  return Math.min(100, Math.round(sum));
+}
+function computeStatus(site){
+  const pct = totalPct(site);
+  if(pct >= 100) return 'concluido';
+  if(site.endDate && site.endDate < todayStr()) return 'atrasado';
+  return 'andamento';
+}
+
+function fmtDate(d){
+  if(!d) return '?';
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+function renderTodayPhotos(entry){
+  const el = document.getElementById('todayPhotos');
+  if(!el) return;
+  const photos = entry.photos || (entry.photo ? [{data: entry.photo}] : []);
+  el.innerHTML = photos.length
+    ? photos.map(p => `<img src="${p.data}" class="entry-photo" onclick="openLightbox(this.src)">`).join('')
+    : '<span class="empty">Nenhuma foto adicionada ainda hoje.</span>';
+}
+
+function wirePhotoAdd(site, entry){
+  const btn = document.getElementById('e_addPhoto');
+  if(!btn) return;
+  btn.addEventListener('click', async () => {
+    const fileInput = document.getElementById('e_photo');
+    if(!fileInput.files || !fileInput.files[0]){
+      alert('Escolha uma foto primeiro.');
+      return;
+    }
+    const originalText = btn.textContent;
+    btn.textContent = 'Salvando...';
+    btn.disabled = true;
+    try{
+      const data = await compressImage(fileInput.files[0]);
+      entry.photos = entry.photos || [];
+      entry.photos.push({data, time: new Date().toTimeString().slice(0,5)});
+      await saveSite(site);
+      renderTodayPhotos(entry);
+      fileInput.value = '';
+    }catch(err){
+      alert('Não foi possível processar a foto.');
+    }
+    btn.textContent = originalText;
+    btn.disabled = false;
+  });
+}
+
+function renderDailyEntrySection(site){
+  const today = todayStr();
+  const entry = (site.entries || []).find(e => e.date === today);
+  const container = document.getElementById('dailyEntrySection');
+  if(!container) return;
+
+  if(!entry){
+    container.innerHTML = `
+      <label>Abertura do serviço de hoje</label>
+      <div class="row2">
+        <div><label>Data</label><input type="date" id="e_date" value="${today}"></div>
+        <div><label>Hora de início</label><input type="time" id="e_startTime"></div>
+      </div>
+      <label>Permissão de Trabalho (PT)</label>
+      <input type="text" id="e_pt" placeholder="Nº da PT">
+      <label>Equipe do dia</label>
+      <div id="teamChips"></div>
+      <div class="chip-input" style="margin-top:8px;">
+        <input type="text" id="e_teamInput" placeholder="Nome do integrante">
+        <button id="e_addTeam" type="button">Adicionar</button>
+      </div>
+      <button class="save-btn secondary" id="e_saveOpen" style="margin-top:14px;">Salvar abertura</button>
+    `;
+
+    let dailyTeam = [];
+    const renderChips = () => {
+      document.getElementById('teamChips').innerHTML = dailyTeam.length
+        ? dailyTeam.map((t,i)=>`<span class="chip">${t}<button data-i="${i}">✕</button></span>`).join('')
+        : '<span class="empty">Nenhum integrante adicionado</span>';
+      document.querySelectorAll('#teamChips button').forEach(b=>{
+        b.addEventListener('click', ()=>{ dailyTeam.splice(+b.dataset.i,1); renderChips(); });
+      });
+    };
+    renderChips();
+    document.getElementById('e_addTeam').addEventListener('click', ()=>{
+      const inp = document.getElementById('e_teamInput');
+      if(inp.value.trim()){ dailyTeam.push(inp.value.trim()); inp.value=''; renderChips(); }
+    });
+
+    document.getElementById('e_saveOpen').addEventListener('click', async ()=>{
+      const date = document.getElementById('e_date').value || today;
+      const startTime = document.getElementById('e_startTime').value;
+      const permissaoTrabalho = document.getElementById('e_pt').value.trim();
+      const newEntry = {date, startTime, permissaoTrabalho, team: [...dailyTeam], status: 'aberto', photos: []};
+      site.entries = site.entries || [];
+      site.entries.push(newEntry);
+      site.entries.sort((a,b)=> a.date < b.date ? 1 : -1);
+      await saveSite(site);
+      renderMarker(site);
+      openDetail(site.id);
+    });
+    return;
+  }
+
+  if(entry.status === 'aberto'){
+    container.innerHTML = `
+      <label>Fechamento do dia (${fmtDate(entry.date)})</label>
+      <div class="row2">
+        <div><label>Hora de término</label><input type="time" id="e_endTime"></div>
+        <div><label>% executado no dia</label><input type="number" id="e_pct" min="0" max="100" placeholder="Ex: 5"></div>
+      </div>
+      <div class="row2">
+        <div><label>Tinta</label><input type="text" id="e_tinta" placeholder="Ex: Esmalte sintético"></div>
+        <div><label>Lote</label><input type="text" id="e_lote" placeholder="Ex: L2026-045"></div>
+      </div>
+      <div class="row2">
+        <div><label>Fabricação</label><input type="date" id="e_fabricacao"></div>
+        <div><label>Validade</label><input type="date" id="e_validade"></div>
+      </div>
+      
+      <!-- Novos Campos Técnicos de Pintura -->
+      <label>Condições Climáticas</label>
+      <div class="row3">
+        <div><label>Temp (°C)</label><input type="number" id="e_temp" placeholder="25"></div>
+        <div><label>Umidade (%)</label><input type="number" id="e_umidade" placeholder="60"></div>
+        <div><label>P. Orvalho (°C)</label><input type="number" id="e_orvalho" placeholder="18"></div>
+      </div>
+      <label>Espessura Película Seca (EPS em µm)</label>
+      <input type="number" id="e_eps" placeholder="Ex: 120">
+
+      <label>Observação (opcional)</label>
+      <textarea id="e_obs" placeholder="Ocorrências, impedimentos, etc."></textarea>
+      <button class="save-btn secondary" id="e_saveClose" style="margin-top:8px;">Salvar fechamento</button>
+
+      <hr>
+      <label>Foto do dia (pode adicionar a qualquer momento)</label>
+      <input type="file" id="e_photo" accept="image/*" capture="environment">
+      <button class="save-btn" id="e_addPhoto" style="margin-top:8px;">+ Adicionar foto</button>
+      <div id="todayPhotos"></div>
+    `;
+    renderTodayPhotos(entry);
+    wirePhotoAdd(site, entry);
+
+    document.getElementById('e_saveClose').addEventListener('click', async ()=>{
+      entry.endTime = document.getElementById('e_endTime').value;
+      entry.pct = Number(document.getElementById('e_pct').value) || 0;
+      entry.tinta = document.getElementById('e_tinta').value.trim();
+      entry.lote = document.getElementById('e_lote').value.trim();
+      entry.fabricacao = document.getElementById('e_fabricacao').value;
+      entry.validade = document.getElementById('e_validade').value;
+      entry.temp = document.getElementById('e_temp').value;
+      entry.umidade = document.getElementById('e_umidade').value;
+      entry.orvalho = document.getElementById('e_orvalho').value;
+      entry.eps = document.getElementById('e_eps').value;
+      entry.obs = document.getElementById('e_obs').value.trim();
+      entry.status = 'fechado';
+      await saveSite(site);
+      renderMarker(site);
+      openDetail(site.id);
+    });
+    return;
+  }
+
+  container.innerHTML = `
+    <label>Apontamento de hoje (${fmtDate(entry.date)}) — concluído</label>
+    <div class="entry">
+      <div class="top"><span>${entry.startTime||'?'} às ${entry.endTime||'?'}</span><span>${entry.pct||0}%</span></div>
+      ${entry.permissaoTrabalho ? `<div class="obs">PT: ${entry.permissaoTrabalho}</div>` : ''}
+      ${(entry.team && entry.team.length) ? `<div class="obs">Equipe: ${entry.team.join(', ')}</div>` : ''}
+      ${(entry.temp || entry.umidade || entry.orvalho) ? `<div class="obs">Clima: ${entry.temp||'?'}°C · UR: ${entry.umidade\vert{}\vert{}'?'}\% · P.Orvalho: ${entry.orvalho||'?'}°C</div>` : ''}
+      ${entry.eps ? `<div class="obs">EPS: ${entry.eps} µm</div>` : ''}
+      ${entry.obs ? `<div class="obs">${entry.obs}</div>` : ''}
+    </div>
+    <label>Foto do dia (pode adicionar a qualquer momento)</label>
+    <input type="file" id="e_photo" accept="image/*" capture="environment">
+    <button class="save-btn" id="e_addPhoto" style="margin-top:8px;">+ Adicionar foto</button>
+    <div id="todayPhotos"></div>
+  `;
+  renderTodayPhotos(entry);
+  wirePhotoAdd(site, entry);
+}
+
+function renderInspectionPhotoPreview(){
+  const el = document.getElementById('inspPhotoPreview');
+  if(!el) return;
+  el.innerHTML = window.__inspPhotoData
+    ? `<img src="${window.__inspPhotoData}" class="entry-photo">`
+    : '';
+}
+
+function renderInspectionSection(site){
+  const container = document.getElementById('inspectionSection');
+  if(!container) return;
+  site.inspecoes = site.inspecoes || [];
+
+  const adminForm = userRole === 'admin' ? `
+    <label>Observação Inspeção</label>
+    <div class="row2">
+      <div><label>Data</label><input type="date" id="i_date" value="${todayStr()}"></div>
+    </div>
+    <textarea id="i_obs" placeholder="Observações da inspeção..."></textarea>
+    <label>Foto (opcional)</label>
+    <input type="file" id="i_photo" accept="image/*" capture="environment">
+    <div id="inspPhotoPreview"></div>
+    <button class="save-btn secondary" id="i_save" style="margin-top:8px;">Adicionar observação</button>
+    <hr>
+  ` : `<label>Observação Inspeção</label>`;
+
+  const list = [...site.inspecoes].sort((a,b)=> a.date < b.date ? 1 : -1);
+  const listHtml = list.length
+    ? list.map((n, i) => {
+        const delBtn = userRole === 'admin' ? `<button class="entry-delete" data-idx="${i}" title="Excluir observação">✕</button>` : '';
+        return `
+        <div class="entry">
+          <div class="top"><span>${fmtDate(n.date)}</span><span>${delBtn}</span></div>
+          ${n.obs ? `<div class="obs">${n.obs}</div>` : ''}
+          ${n.photo ? `<img src="${n.photo}" class="entry-photo" onclick="openLightbox(this.src)">` : ''}
+        </div>
+      `;
+      }).join('')
+    : '<div class="empty">Nenhuma observação de inspeção registrada.</div>';
+
+  container.innerHTML = adminForm + listHtml;
+
+  if(userRole === 'admin'){
+    window.__inspPhotoData = null;
+    document.getElementById('i_photo').addEventListener('change', async (e) => {
+      if(e.target.files && e.target.files[0]){
+        try{
+          window.__inspPhotoData = await compressImage(e.target.files[0]);
+          renderInspectionPhotoPreview();
+        }catch(err){
+          alert('Não foi possível processar a foto.');
+        }
+      }
+    });
+
+    document.getElementById('i_save').addEventListener('click', async () => {
+      const date = document.getElementById('i_date').value || todayStr();
+      const obs = document.getElementById('i_obs').value.trim();
+      if(!obs && !window.__inspPhotoData){
+        alert('Escreva uma observação ou adicione uma foto.');
+        return;
+      }
+      const note = {date, obs};
+      if(window.__inspPhotoData) note.photo = window.__inspPhotoData;
+      site.inspecoes.push(note);
+      await saveSite(site);
+      window.__inspPhotoData = null;
+      renderInspectionSection(site);
+    });
+
+    document.querySelectorAll('#inspectionSection .entry-delete').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = +btn.dataset.idx;
+        const sortedList = [...site.inspecoes].sort((a,b)=> a.date < b.date ? 1 : -1);
+        const target = sortedList[idx];
+        if(!confirm(`Excluir a observação de ${fmtDate(target.date)}?`)) return;
+        const realIdx = site.inspecoes.indexOf(target);
+        site.inspecoes.splice(realIdx, 1);
+        await saveSite(site);
+        renderInspectionSection(site);
+      });
+    });
+  }
+}
+
+async function generateReport(site){
+  const btn = document.getElementById('d_pdf');
+  const originalText = btn.textContent;
+  btn.textContent = 'Gerando PDF...';
+  btn.disabled = true;
+
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit: 'mm', format: 'a4'});
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 14;
+    const status = computeStatus(site);
+    const pct = totalPct(site);
+    const entries = [...(site.entries||[])].sort((a,b)=> a.date < b.date ? -1 : 1);
+
+    doc.setFillColor(14, 31, 47);
+    doc.rect(0, 0, pageW, 26, 'F');
+    doc.setTextColor(255);
+    doc.setFontSize(15);
+    doc.setFont(undefined, 'bold');
+    doc.text('RELATÓRIO DE SERVIÇO DE PINTURA', margin, 12);
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.text(site.ri ? `RI ${site.ri}` : 'Sem número de RI', margin, 19);
+    doc.setFontSize(9);
+    doc.text(`Emitido em ${new Date().toLocaleDateString('pt-BR')}`, pageW - margin, 12, {align: 'right'});
+    doc.text(site.name || 'Local sem nome', pageW - margin, 19, {align: 'right'});
+    doc.setTextColor(0);
+
+    let y = 34;
+
+    doc.autoTable({
+      startY: y,
+      theme: 'plain',
+      margin: {left: margin, right: margin},
+      styles: {fontSize: 9, cellPadding: 1.6},
+      columnStyles: {
+        0: {fontStyle: 'bold', textColor: [74,97,120], cellWidth: 34},
+        2: {fontStyle: 'bold', textColor: [74,97,120], cellWidth: 34}
+      },
+      body: [
+        ['Status', statusLabel(status), 'Progresso acumulado', `${pct}%`],
+        ['Encarregado', site.encarregado || '—', 'Equipamento', site.equipamento || '—'],
+        ['Data de início', fmtDate(site.startDate), 'Término previsto', fmtDate(site.endDate)],
+      ],
+    });
+    y = doc.lastAutoTable.finalY + 7;
+
+    if(site.esquemaPintura && site.esquemaPintura.length){
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(14, 31, 47);
+      doc.text('Esquema de Pintura', margin, y);
+      doc.setTextColor(0);
+      y += 4;
+
+      doc.autoTable({
+        startY: y,
+        head: [['Demão', 'Tinta', 'Tipo de Tratamento']],
+        body: site.esquemaPintura.map(r => [r.demao || '', r.tinta || '', r.tratamento || '']),
+        theme: 'grid',
+        margin: {left: margin, right: margin},
+        headStyles: {fillColor: [22,50,74], textColor: 255, fontSize: 9},
+        styles: {fontSize: 9, cellPadding: 2},
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(14, 31, 47);
+    doc.text('Registro de Execução Diária', margin, y);
+    doc.setTextColor(0);
+    y += 4;
+
+    if(entries.length === 0){
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(120);
+      doc.text('Nenhum apontamento registrado.', margin, y);
+      doc.setTextColor(0);
+      y += 8;
+    } else {
+      doc.autoTable({
+        startY: y,
+        head: [['Data','Horário','PT','Equipe','Clima / EPS','Tinta / Lote','%','Obs']],
+        body: entries.map(e => [
+          fmtDate(e.date) + (e.status === 'aberto' ? ' (em aberto)' : ''),
+          (e.startTime || e.endTime) ? `${e.startTime||'?'}-${e.endTime||'?'}` : '—',
+          e.permissaoTrabalho || '—',
+          (e.team && e.team.length) ? e.team.join(', ') : '—',
+          `${e.temp||'-'}°C / UR:${e.umidade||'-'}%\nEPS: ${e.eps||'-'}µm`,
+          `${e.tinta||'—'}\nLote: ${e.lote||'—'}`,
+          `${e.pct || 0}%`,
+          e.obs || ''
+        ]),
+        theme: 'striped',
+        margin: {left: margin, right: margin},
+        headStyles: {fillColor: [22,50,74], textColor: 255, fontSize: 7},
+        styles: {fontSize: 7, cellPadding: 1.5, overflow: 'linebreak'},
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    if(site.inspecoes && site.inspecoes.length){
+      const inspSorted = [...site.inspecoes].sort((a,b)=> a.date < b.date ? -1 : 1);
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(14, 31, 47);
+      doc.text('Observações de Inspeção', margin, y);
+      doc.setTextColor(0);
+      y += 4;
+
+      doc.autoTable({
+        startY: y,
+        head: [['Data', 'Observação']],
+        body: inspSorted.map(n => [fmtDate(n.date), n.obs || '—']),
+        theme: 'grid',
+        margin: {left: margin, right: margin},
+        headStyles: {fillColor: [22,50,74], textColor: 255, fontSize: 9},
+        styles: {fontSize: 9, cellPadding: 2, overflow: 'linebreak'},
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    const photoItems = [];
+    entries.forEach(e => {
+      const photos = e.photos || (e.photo ? [{data: e.photo}] : []);
+      photos.forEach(p => photoItems.push({date: e.date, pct: e.pct, time: p.time, data: p.data, label: 'Apontamento diário'}));
+    });
+    (site.inspecoes || []).forEach(n => {
+      if(n.photo) photoItems.push({date: n.date, data: n.photo, label: 'Observação de Inspeção'});
+    });
+    photoItems.sort((a,b) => a.date < b.date ? -1 : 1);
+
+    if(photoItems.length){
+      doc.addPage();
+      y = margin;
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(14, 31, 47);
+      doc.text('Relatório Fotográfico', margin, y);
+      doc.setTextColor(0);
+      y += 3;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(120);
+      doc.text('Registro visual completo do serviço, em ordem cronológica.', margin, y + 4);
+      doc.setTextColor(0);
+      y += 12;
+
+      for(const p of photoItems){
+        try{
+          const imgProps = doc.getImageProperties(p.data);
+          const imgW = 85;
+          const imgH = (imgProps.height / imgProps.width) * imgW;
+          if(y + imgH + 10 > pageH - margin){ doc.addPage(); y = margin; }
+          doc.addImage(p.data, 'JPEG', margin, y, imgW, imgH);
+          doc.setFontSize(10);
+          doc.setFont(undefined, 'bold');
+          doc.text(fmtDate(p.date), margin, y + imgH + 6);
+          doc.setFontSize(9);
+          doc.setFont(undefined, 'normal');
+          doc.setTextColor(100);
+          const caption = `${p.label}${p.time ? ' · ' + p.time : ''}${p.pct !== undefined ? ' · ' + p.pct + '%' : ''}`;
+          doc.text(caption, margin, y + imgH + 11);
+          doc.setTextColor(0);
+          y += imgH + 18;
+        }catch(err){
+          console.error('Erro ao inserir foto no PDF:', err);
+        }
+      }
+    }
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for(let i = 1; i <= pageCount; i++){
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(140);
+      doc.text(`Página ${i} de ${pageCount}`, pageW - margin, pageH - 8, {align: 'right'});
+      doc.text('Desenvolvido por Rodrigo Oliveira Mendes da Costa', margin, pageH - 8);
+      doc.setTextColor(0);
+    }
+
+    const safeName = (site.name || 'local').replace(/[^\w\-]+/g, '_');
+    doc.save(`relatorio_pintura_${safeName}.pdf`);
+  }catch(err){
+    console.error('Erro ao gerar PDF:', err);
+    alert('Não foi possível gerar o PDF. Tente novamente.');
+  }
+
+  btn.textContent = originalText;
+  btn.disabled = false;
+}
+
+function makeIcon(color){
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${color};transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`,
+    iconSize:[22,22], iconAnchor:[11,22]
+  });
+}
+
+// ---- Carregamento Otimizado (Download Leve) ----
+async function loadAll(){
+  await refreshTokenIfNeeded();
+  try{
+    const res = await fetch(`${FIREBASE_URL}/sites.json?auth=${authToken}`);
+    if(res.status === 401 || res.status === 403){
+      localStorage.removeItem('authToken');
+      showLoginScreen('Sua sessão expirou. Entre novamente.');
+      return;
+    }
+    const data = await res.json();
+    if(data){
+      Object.keys(data).forEach(id => { sites[id] = data[id]; });
+    }
+  }catch(e){
+    console.error('Falha ao carregar dados do Firebase:', e);
+    document.getElementById('loadingMsg').textContent = 'Erro ao conectar ao banco de dados.';
+    setTimeout(()=> document.getElementById('loadingMsg').style.display='none', 2500);
+    return;
+  }
+  refreshMapMarkers();
+  document.getElementById('loadingMsg').style.display='none';
+}
+
+function refreshMapMarkers(){
+  Object.values(sites).forEach(site => {
+    const s = computeStatus(site);
+    if(markers[site.id]) map.removeLayer(markers[site.id]);
+
+    if(!activeStatusFilter || activeStatusFilter === s) {
+      renderMarker(site);
+    }
+  });
+}
+
+async function saveSite(site){
+  await refreshTokenIfNeeded();
+  try{
+    const res = await fetch(`${FIREBASE_URL}/sites/${site.id}.json?auth=${authToken}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(site)
+    });
+    if(res.status === 401 || res.status === 403){
+      localStorage.removeItem('authToken');
+      showLoginScreen('Sua sessão expirou. Entre novamente para continuar salvando.');
+    }
+  }catch(e){
+    console.error('Falha ao salvar no Firebase:', e);
+    alert('Não foi possível salvar. Verifique sua conexão com a internet.');
+  }
+}
+
+async function deleteSite(id){
+  await refreshTokenIfNeeded();
+  try{
+    const res = await fetch(`${FIREBASE_URL}/sites/${id}.json?auth=${authToken}`, {
+      method: 'DELETE'
+    });
+    if(res.status === 401 || res.status === 403){
+      localStorage.removeItem('authToken');
+      showLoginScreen('Sua sessão expirou. Entre novamente.');
+      return false;
+    }
+    return true;
+  }catch(e){
+    console.error('Falha ao excluir no Firebase:', e);
+    alert('Não foi possível excluir. Verifique sua conexão com a internet.');
+    return false;
+  }
+}
+
+function renderMarker(site){
+  if(markers[site.id]) map.removeLayer(markers[site.id]);
+  const m = L.marker([site.lat, site.lng], {icon: makeIcon(statusColor(site))}).addTo(map);
+  const tooltipText = site.ri ? `RI ${site.ri}` : 'Sem RI';
+  m.bindTooltip(tooltipText, {direction: 'top', offset: [0, -20]});
+  m.on('click', () => openDetail(site.id));
+  markers[site.id] = m;
+}
+
+// ---- Setup Filtro no Mapa ----
+function setupFilters(){
+  const filters = [
+    { id: 'filter-andamento', type: 'andamento' },
+    { id: 'filter-concluido', type: 'concluido' },
+    { id: 'filter-atrasado', type: 'atrasado' }
+  ];
+
+  filters.forEach(f => {
+    document.getElementById(f.id).addEventListener('click', () => {
+      if(activeStatusFilter === f.type) {
+        activeStatusFilter = null;
+        document.getElementById(f.id).classList.remove('active-filter');
+      } else {
+        filters.forEach(x => document.getElementById(x.id).classList.remove('active-filter'));
+        activeStatusFilter = f.type;
+        document.getElementById(f.id).classList.add('active-filter');
+      }
+      refreshMapMarkers();
+    });
+  });
+}
+
+// ---- Map setup ----
+function initMap(){
+  map = L.map('map').setView([-23.5505, -46.6333], 12); 
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+  }).addTo(map);
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19
+  }).addTo(map);
+
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      map.setView([pos.coords.latitude, pos.coords.longitude], 13);
+    }, ()=>{});
+  }
+
+  map.on('click', e => {
+    if(!addMode) return;
+    pendingLatLng = e.latlng;
+    openNewForm(e.latlng);
+    setAddMode(false);
+  });
+
+  setupFilters();
+}
+
+function setAddMode(v){
+  addMode = v;
+  document.getElementById('newBtn').classList.toggle('active', v);
+  document.getElementById('hint').style.display = v ? 'block' : 'none';
+  document.getElementById('newBtn').textContent = v ? 'Cancelar' : '+ Novo local';
+}
+document.getElementById('newBtn').addEventListener('click', ()=> setAddMode(!addMode));
+document.getElementById('listBtn').addEventListener('click', openList);
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  if(!confirm('Sair da sua conta?')) return;
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('authUid');
+  authToken = null;
+  refreshToken = null;
+  authUid = null;
+  userRole = 'editor';
+  Object.values(markers).forEach(m => map.removeLayer(m));
+  for(const k in markers) delete markers[k];
+  sites = {};
+  closePanel();
+  showLoginScreen();
+});
+document.getElementById('closePanel').addEventListener('click', closePanel);
+
+function openPanel(){ document.getElementById('panel').classList.add('open'); }
+function closePanel(){ document.getElementById('panel').classList.remove('open'); }
+
+function openList(){
+  document.getElementById('panelTitle').textContent = 'Locais cadastrados';
+  document.getElementById('panelRi').textContent = '';
+  const all = Object.values(sites);
+
+  if(all.length === 0){
+    document.getElementById('panelBody').innerHTML =
+      '<div class="empty">Nenhum local cadastrado ainda. Toque em "+ Novo local" para começar.</div>';
+    openPanel();
+    return;
+  }
+
+  all.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+
+  document.getElementById('panelBody').innerHTML = all.map(site => {
+    const pct = totalPct(site);
+    const status = computeStatus(site);
+    return `
+      <div class="site-item" data-id="${site.id}">
+        <div class="top">
+          <strong>${site.name}</strong>
+          <span class="status-badge" style="background:${statusColor(site)}">${statusLabel(status)}</span>
+        </div>
+        <div class="meta">${site.ri ? 'RI ' + site.ri : 'Sem RI'} · ${site.startDate||'?'} a ${site.endDate||'?'}</div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      </div>
+    `;
+  }).join('');
+
+  document.querySelectorAll('.site-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const site = sites[el.dataset.id];
+      map.setView([site.lat, site.lng], 17);
+      openDetail(site.id);
+    });
+  });
+
+  openPanel();
+}
+
+function openNewForm(latlng){
+  document.getElementById('panelTitle').textContent = 'Novo local';
+  document.getElementById('panelRi').textContent = '';
+  document.getElementById('panelBody').innerHTML = `
+    <label>Nome do local</label>
+    <input type="text" id="f_name" placeholder="Ex: Trecho 3 - Av. Central">
+
+    <div class="row2">
+      <div><label>Número da RI</label><input type="text" id="f_ri" placeholder="RI-0001"></div>
+      <div><label>Encarregado</label><input type="text" id="f_enc" placeholder="Nome do encarregado"></div>
+    </div>
+
+    <label>Equipamento</label>
+    <input type="text" id="f_equip" placeholder="Ex: Retroescavadeira, caminhão pipa...">
+
+    <div class="row2">
+      <div><label>Data de início</label><input type="date" id="f_start" value="${todayStr()}"></div>
+      <div><label>Data de término prevista</label><input type="date" id="f_end"></div>
+    </div>
+
+    <label>Esquema de Pintura</label>
+    <table class="paint-table">
+      <thead><tr><th>Demão</th><th>Tinta</th><th>Tipo de tratamento</th><th></th></tr></thead>
+      <tbody id="f_paintRows"></tbody>
+    </table>
+    <button type="button" class="add-row-btn" id="f_addPaintRow">+ Adicionar demão</button>
+
+    <button class="save-btn" id="f_save" style="margin-top:20px;">Salvar local</button>
+  `;
+  let paintRows = [{demao:'1ª', tinta:'', tratamento:''}];
+  const renderPaintRows = () => {
+    document.getElementById('f_paintRows').innerHTML = paintRows.map((r,i)=>`
+      <tr>
+        <td><input type="text" class="pr-demao" data-i="${i}" value="${r.demao}"></td>
+        <td><input type="text" class="pr-tinta" data-i="${i}" value="${r.tinta}" placeholder="Ex: Primer epóxi"></td>
+        <td><input type="text" class="pr-trat" data-i="${i}" value="${r.tratamento}" placeholder="Ex: Jateamento"></td>
+        <td><button type="button" class="paint-remove" data-i="${i}">✕</button></td>
+      </tr>
+    `).join('');
+    document.querySelectorAll('#f_paintRows .pr-demao').forEach(el => el.addEventListener('input', e => paintRows[+e.target.dataset.i].demao = e.target.value));
+    document.querySelectorAll('#f_paintRows .pr-tinta').forEach(el => el.addEventListener('input', e => paintRows[+e.target.dataset.i].tinta = e.target.value));
+    document.querySelectorAll('#f_paintRows .pr-trat').forEach(el => el.addEventListener('input', e => paintRows[+e.target.dataset.i].tratamento = e.target.value));
+    document.querySelectorAll('#f_paintRows .paint-remove').forEach(el => el.addEventListener('click', e => {
+      paintRows.splice(+e.target.dataset.i, 1);
+      renderPaintRows();
+    }));
+  };
+  renderPaintRows();
+  document.getElementById('f_addPaintRow').addEventListener('click', () => {
+    paintRows.push({demao: `${paintRows.length+1}ª`, tinta:'', tratamento:''});
+    renderPaintRows();
+  });
+
+  document.getElementById('f_save').addEventListener('click', async ()=>{
+    const name = document.getElementById('f_name').value.trim() || 'Local sem nome';
+    const site = {
+      id: uid(),
+      name,
+      ri: document.getElementById('f_ri').value.trim(),
+      encarregado: document.getElementById('f_enc').value.trim(),
+      equipamento: document.getElementById('f_equip').value.trim(),
+      startDate: document.getElementById('f_start').value,
+      endDate: document.getElementById('f_end').value,
+      esquemaPintura: paintRows.filter(r => r.demao.trim() || r.tinta.trim() || r.tratamento.trim()),
+      lat: latlng.lat, lng: latlng.lng,
+      entries: []
+    };
+    sites[site.id] = site;
+    await saveSite(site);
+    renderMarker(site);
+    openDetail(site.id);
+  });
+  openPanel();
+}
+
+// ---- Detail On-Demand Fetch ----
+async function openDetail(id){
+  await refreshTokenIfNeeded();
+  
+  // Download sob demanda dos dados completos
+  try {
+    const res = await fetch(`${FIREBASE_URL}/sites/${id}.json?auth=${authToken}`);
+    if(res.ok) {
+      const fullSiteData = await res.json();
+      if(fullSiteData) sites[id] = fullSiteData;
+    }
+  } catch(e) {
+    console.error("Erro ao buscar detalhes do site:", e);
+  }
+
+  const site = sites[id];
+  document.getElementById('panelTitle').textContent = site.name;
+  document.getElementById('panelRi').textContent = site.ri ? ('RI ' + site.ri) : 'Sem número de RI';
+  const status = computeStatus(site);
+  const pct = totalPct(site);
+
+  document.getElementById('panelBody').innerHTML = `
+    <span class="status-badge" style="background:${statusColor(site)}">${statusLabel(status)}</span>
+    ${userRole === 'admin' ? `<button class="save-btn" id="d_pdf" style="margin-top:12px;">📄 Baixar relatório em PDF</button>` : ''}
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="progress-label">${pct}% concluído</div>
+    </div>
+
+    <label>Nome do local</label>
+    <input type="text" id="d_name" value="${site.name||''}" placeholder="Ex: Trecho 3 - Av. Central">
+
+    <label>Número da RI</label>
+    <input type="text" id="d_ri" value="${site.ri||''}" placeholder="RI-0001">
+
+    <label>Equipamento</label>
+    <input type="text" id="d_equip" value="${site.equipamento||''}" placeholder="Ex: Retroescavadeira, caminhão pipa...">
+
+    <label>Encarregado</label>
+    <input type="text" id="d_enc" value="${site.encarregado||''}">
+
+    <div class="row2">
+      <div><label>Início</label><input type="date" id="d_start" value="${site.startDate||''}"></div>
+      <div><label>Término previsto</label><input type="date" id="d_end" value="${site.endDate||''}"></div>
+    </div>
+
+    <label>Esquema de Pintura</label>
+    <table class="paint-table">
+      <thead><tr><th>Demão</th><th>Tinta</th><th>Tipo de tratamento</th><th></th></tr></thead>
+      <tbody id="d_paintRows"></tbody>
+    </table>
+    <button type="button" class="add-row-btn" id="d_addPaintRow">+ Adicionar demão</button>
+
+    <button class="save-btn" id="d_saveInfo" style="margin-top:20px;">Salvar dados do local</button>
+
+    <hr>
+    <div id="dailyEntrySection"></div>
+
+    <hr>
+    <div id="inspectionSection"></div>
+
+    <hr>
+    <label>Histórico de apontamentos</label>
+    <div id="entriesList"></div>
+
+    <hr>
+    ${userRole === 'admin' ? `<button class="save-btn danger" id="d_delete">Excluir este local</button>` : ''}
+  `;
+
+  renderDailyEntrySection(site);
+  renderInspectionSection(site);
+
+  let paintRows = site.esquemaPintura && site.esquemaPintura.length
+    ? site.esquemaPintura.map(r => ({...r}))
+    : [{demao:'1ª', tinta:'', tratamento:''}];
+  const renderPaintRows = () => {
+    document.getElementById('d_paintRows').innerHTML = paintRows.map((r,i)=>`
+      <tr>
+        <td><input type="text" class="pr-demao" data-i="${i}" value="${r.demao}"></td>
+        <td><input type="text" class="pr-tinta" data-i="${i}" value="${r.tinta}" placeholder="Ex: Primer epóxi"></td>
+        <td><input type="text" class="pr-trat" data-i="${i}" value="${r.tratamento}" placeholder="Ex: Jateamento"></td>
+        <td><button type="button" class="paint-remove" data-i="${i}">✕</button></td>
+      </tr>
+    `).join('');
+    document.querySelectorAll('#d_paintRows .pr-demao').forEach(el => el.addEventListener('input', e => paintRows[+e.target.dataset.i].demao = e.target.value));
+    document.querySelectorAll('#d_paintRows .pr-tinta').forEach(el => el.addEventListener('input', e => paintRows[+e.target.dataset.i].tinta = e.target.value));
+    document.querySelectorAll('#d_paintRows .pr-trat').forEach(el => el.addEventListener('input', e => paintRows[+e.target.dataset.i].tratamento = e.target.value));
+    document.querySelectorAll('#d_paintRows .paint-remove').forEach(el => el.addEventListener('click', e => {
+      paintRows.splice(+e.target.dataset.i, 1);
+      renderPaintRows();
+    }));
+  };
+  renderPaintRows();
+  document.getElementById('d_addPaintRow').addEventListener('click', () => {
+    paintRows.push({demao: `${paintRows.length+1}ª`, tinta:'', tratamento:''});
+    renderPaintRows();
+  });
+
+  const pdfBtn = document.getElementById('d_pdf');
+  if(pdfBtn) pdfBtn.addEventListener('click', () => generateReport(site));
+
+  document.getElementById('d_saveInfo').addEventListener('click', async ()=>{
+    site.name = document.getElementById('d_name').value.trim() || site.name;
+    site.ri = document.getElementById('d_ri').value.trim();
+    site.equipamento = document.getElementById('d_equip').value.trim();
+    site.encarregado = document.getElementById('d_enc').value.trim();
+    site.startDate = document.getElementById('d_start').value;
+    site.endDate = document.getElementById('d_end').value;
+    site.esquemaPintura = paintRows.filter(r => r.demao.trim() || r.tinta.trim() || r.tratamento.trim());
+    await saveSite(site);
+    renderMarker(site);
+    openDetail(id);
+  });
+
+  const deleteBtn = document.getElementById('d_delete');
+  if(deleteBtn) deleteBtn.addEventListener('click', async ()=>{
+    const confirmed = confirm(`Tem certeza que quer excluir "${site.name}"? Isso apaga todo o histórico de apontamentos e fotos deste local.`);
+    if(!confirmed) return;
+    const ok = await deleteSite(id);
+    if(ok){
+      if(markers[id]){ map.removeLayer(markers[id]); delete markers[id]; }
+      delete sites[id];
+      closePanel();
+    }
+  });
+
+  const list = document.getElementById('entriesList');
+  if(!site.entries || site.entries.length===0){
+    list.innerHTML = '<div class="empty">Nenhum apontamento lançado ainda.</div>';
+  } else {
+    list.innerHTML = site.entries.map((e, i) => {
+      const paintBits = [];
+      if(e.tinta) paintBits.push(`Tinta: ${e.tinta}`);
+      if(e.lote) paintBits.push(`Lote: ${e.lote}`);
+      if(e.fabricacao) paintBits.push(`Fab: ${fmtDate(e.fabricacao)}`);
+      if(e.validade) paintBits.push(`Val: ${fmtDate(e.validade)}`);
+      const photos = e.photos || (e.photo ? [{data: e.photo}] : []);
+      const openTag = e.status === 'aberto' ? ' <span class="status-badge" style="background:#4a6178;font-size:9px;">Em aberto</span>' : '';
+      const delBtn = userRole === 'admin' ? `<button class="entry-delete" data-idx="${i}" title="Excluir apontamento">✕</button>` : '';
+      return `
+      <div class="entry">
+        <div class="top"><span>${e.date}${(e.startTime || e.endTime) ? ' · ' + (e.startTime||'?') + ' às ' + (e.endTime||'?') : ''}${openTag}</span><span>${e.pct||0}% ${delBtn}</span></div>
+        ${e.permissaoTrabalho ? `<div class="obs">PT: ${e.permissaoTrabalho}</div>` : ''}
+        ${(e.team && e.team.length) ? `<div class="obs">Equipe: ${e.team.join(', ')}</div>` : ''}
+        ${(e.temp || e.umidade || e.orvalho) ? `<div class="obs">Clima: ${e.temp||'-'}°C · UR: ${e.umidade\vert{}\vert{}'-'}\% · P.Orvalho: ${e.orvalho||'-'}°C</div>` : ''}
+        ${e.eps ? `<div class="obs">EPS: ${e.eps} µm</div>` : ''}
+        ${paintBits.length ? `<div class="obs">${paintBits.join(' · ')}</div>` : ''}
+        ${e.obs ? `<div class="obs">${e.obs}</div>` : ''}
+        ${photos.map(p => `<img src="${p.data}" class="entry-photo" onclick="openLightbox(this.src)">`).join('')}
+      </div>
+    `;
+    }).join('');
+
+    if(userRole === 'admin'){
+      document.querySelectorAll('.entry-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const idx = +btn.dataset.idx;
+          const target = site.entries[idx];
+          const confirmed = confirm(`Excluir o apontamento de ${target ? fmtDate(target.date) : 'este dia'}? Essa ação não pode ser desfeita.`);
+          if(!confirmed) return;
+          site.entries.splice(idx, 1);
+          await saveSite(site);
+          renderMarker(site);
+          openDetail(site.id);
+        });
+      });
+    }
+  }
+
+  openPanel();
+}
+
+// ---- Busca de Endereço ----
+let searchTimeout = null;
+let tempSearchMarker = null;
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  const q = e.target.value.trim();
+  clearTimeout(searchTimeout);
+  const resultsBox = document.getElementById('searchResults');
+  if(q.length < 3){ resultsBox.style.display = 'none'; resultsBox.innerHTML=''; return; }
+  searchTimeout = setTimeout(async () => {
+    try{
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&addressdetails=1`);
+      const data = await res.json();
+      if(!data.length){
+        resultsBox.style.display = 'block';
+        resultsBox.innerHTML = '<div>Nenhum resultado encontrado</div>';
+        return;
+      }
+      resultsBox.style.display = 'block';
+      resultsBox.innerHTML = data.map((r,i) =>
+        `<div data-i="${i}">${r.display_name}</div>`).join('');
+      resultsBox.querySelectorAll('div[data-i]').forEach(el=>{
+        el.addEventListener('click', () => selectSearchResult(data[+el.dataset.i]));
+      });
+    }catch(err){
+      resultsBox.style.display = 'block';
+      resultsBox.innerHTML = '<div>Erro ao buscar. Verifique a conexão.</div>';
+    }
+  }, 400);
+});
+
+function selectSearchResult(r){
+  const lat = parseFloat(r.lat), lng = parseFloat(r.lon);
+  document.getElementById('searchInput').value = r.display_name;
+  document.getElementById('searchResults').style.display = 'none';
+  map.setView([lat, lng], 17);
+
+  if(tempSearchMarker) map.removeLayer(tempSearchMarker);
+  tempSearchMarker = L.marker([lat, lng], {icon: makeIcon('#4a6178')}).addTo(map);
+  tempSearchMarker.bindPopup(
+    `<div style="font-size:13px;max-width:200px;">${r.display_name}<br>
+     <button class="popup-btn" onclick="confirmSearchLocation(${lat}, ${lng})">Cadastrar local aqui</button></div>`
+  ).openPopup();
+}
+
+window.confirmSearchLocation = function(lat, lng){
+  if(tempSearchMarker){ map.removeLayer(tempSearchMarker); tempSearchMarker = null; }
+  document.getElementById('searchInput').value = '';
+  openNewForm({lat, lng});
+};
+
+document.addEventListener('click', (e) => {
+  if(!document.getElementById('searchBox').contains(e.target)){
+    document.getElementById('searchResults').style.display = 'none';
+  }
+});
+
+initMap();
+if(authToken){
+  fetchUserRole().then(loadAll);
+} else {
+  showLoginScreen();
+}
+</script>
+</body>
+</html>
